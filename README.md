@@ -143,7 +143,33 @@ problems. A broken GPU driver can cause both.
 ## Tested on
 
 - MacBookPro11,3 (Late 2013, i7-4850HQ, GT 750M on nouveau), Fedora 45,
-  kernel 7.3, mbpfan 2.5.0 (built with `mbpfan/install-mbpfan.sh`).
+  kernel 7.3, Plasma 6 (Wayland), mbpfan 2.5.0 (built with
+  `mbpfan/install-mbpfan.sh`).
+
+### Confirmed lid close/reopen (2026-11-20, v1.0.0 + mbpfan 2.5.0)
+
+The hook's journal after the wake:
+
+```
+BD_PROCHOT set on 8 cpu(s); avg clock 2899 MHz
+cleared BD_PROCHOT
+mbpfan try-restart rc=0
+```
+
+mbpfan 2.5.0 also caught the wake on its own (`Clock skew detected - slept for
+66 seconds but expected 1`) and re-applied the fan speeds.
+
+State about 90 s after reopening the lid:
+
+| | Without this fix | With v1.0.0 + mbpfan 2.5.0 |
+|---|---|---|
+| CPU clock | ~800 MHz (BD_PROCHOT stuck) | **3292 MHz** |
+| Fans at high temperature | 2000 rpm at 100 °C | **6082 / 5634 rpm** at 85 °C |
+| Forced idle (`intel_powerclamp`) | active | none |
+
+BD_PROCHOT was set on all 8 CPUs after every wake tested, so this isn't an
+occasional glitch: without the hook, every lid reopen leaves the Mac capped at
+800 MHz.
 
 Other Haswell/Broadwell MacBook Pros with the same symptoms should behave the
 same way, but haven't been tested.
