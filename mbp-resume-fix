@@ -1,0 +1,88 @@
+#!/usr/bin/python3 -I
+"""
+mbp-resume-fix — repair what S3 resume (lid close/reopen) breaks on the
+MacBookPro11,3. Run as root; called from the systemd-sleep hook on "post".
+
+1. BD_PROCHOT: the SMC can leave bidirectional PROCHOT asserted after wake,
+   pinning every core at ~800 MHz regardless of temperature. Clear bit 0 of
+   MSR_POWER_CTL (0x1FC) on all CPUs if set. The CPU's own TjMax/TCC thermal
+   protection is unaffected.
+2. mbpfan: the SMC resets fan targets on wake, but mbpfan caches the last
+   speed it wrote and never re-writes it, so fans stay at minimum while the
+   CPU cooks. try-restart it (no-op if powerbolt "fans max" has it stopped).
+
+Usage: mbp-resume-fix [--check]   (--check = report only, change nothing)
+"""
+import glob
+import os
+import struct
+import subprocess
+import sys
+import syslog
+
+MSR_POWER_CTL = 0x1FC
+CHECK = "--check" in sys.argv
+
+
+def log(msg):
+    print(msg)
+    syslog.syslog(syslog.LOG_INFO, msg)
+
+
+def cpus():
+    return sorted(int(p.split("/")[-1]) for p in glob.glob("/dev/cpu/[0-9]*"))
+
+
+def rdmsr(cpu, reg):
+    fd = os.open(f"/dev/cpu/{cpu}/msr", os.O_RDONLY)
+    try:
+        return struct.unpack("<Q", os.pread(fd, 8, reg))[0]
+    finally:
+        os.close(fd)
+
+
+def wrmsr(cpu, reg, val):
+    fd = os.open(f"/dev/cpu/{cpu}/msr", os.O_WRONLY)
+    try:
+        os.pwrite(fd, struct.pack("<Q", val), reg)
+    finally:
+        os.close(fd)
+
+
+def mhz():
+    with open("/proc/cpuinfo") as f:
+        v = [float(l.split(":")[1]) for l in f if l.startswith("cpu MHz")]
+    return round(sum(v) / len(v)) if v else 0
+
+
+def main():
+    syslog.openlog("mbp-resume-fix")
+    subprocess.run(["/usr/sbin/modprobe", "msr"], check=False)
+
+    stuck = []
+    for c in cpus():
+        try:
+            v = rdmsr(c, MSR_POWER_CTL)
+        except OSError as e:
+            log(f"cpu{c}: cannot read MSR 0x1FC: {e}")
+            continue
+        if v & 1:
+            stuck.append((c, v))
+    log(f"BD_PROCHOT set on {len(stuck)} cpu(s); avg clock {mhz()} MHz")
+
+    if not CHECK:
+        for c, v in stuck:
+            try:
+                wrmsr(c, MSR_POWER_CTL, v & ~1)
+            except OSError as e:
+                log(f"cpu{c}: cannot write MSR 0x1FC: {e}")
+        if stuck:
+            log("cleared BD_PROCHOT")
+
+        r = subprocess.run(["/usr/bin/systemctl", "try-restart", "mbpfan.service"],
+                           check=False)
+        log(f"mbpfan try-restart rc={r.returncode}")
+
+
+if __name__ == "__main__":
+    main()

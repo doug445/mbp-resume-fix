@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# systemd-sleep hook: undo what S3 resume breaks (stuck BD_PROCHOT, stale mbpfan).
+# Installed to /usr/lib/systemd/system-sleep/mbp-resume-fix
+case "$1" in
+  post)
+    # Give the SMC a moment to finish its own post-wake fiddling. Synchronous
+    # on purpose: systemd-suspend.service kills leftover background children.
+    sleep 3
+    /usr/local/sbin/mbp-resume-fix >/dev/null 2>&1 || true
+    ;;
+esac
