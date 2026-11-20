@@ -119,6 +119,27 @@ at boot, and only on CPUs where the bit is actually set.
 Writing MSRs needs the `msr` module (the fixer loads it) and doesn't work under
 kernel lockdown (`/sys/kernel/security/lockdown` must be `[none]`).
 
+## GPU driver: use nouveau, never NVIDIA's driver on Kepler
+
+The MacBook Pro 11,3 has an NVIDIA GeForce GT 750M, a **Kepler** GPU. **Use the
+open-source nouveau driver. Do not install NVIDIA's proprietary driver on a
+Kepler Mac, ever.**
+
+The only NVIDIA driver that still supports Kepler is the end-of-life
+470xx legacy branch, and on this hardware it's unworkable:
+
+- The test machine has always run nouveau, and is stable on Plasma 6 (Wayland)
+  with kernel 7.3.
+- An identical MacBook Pro that ran the NVIDIA 470xx legacy driver became
+  unusable: KWin compositor corruption, plus other major problems.
+
+nouveau is in the mainline kernel, keeps working across kernel upgrades, and
+doesn't need out-of-tree modules. This repo was developed and tested on
+nouveau only. If you're coming from the NVIDIA driver, remove it completely,
+including `akmod-nvidia*` / `nvidia-*` packages and any `nouveau` blacklist in
+`/etc/modprobe.d/` or the kernel command line, before chasing thermal or resume
+problems. A broken GPU driver can cause both.
+
 ## Tested on
 
 - MacBookPro11,3 (Late 2013, i7-4850HQ, GT 750M on nouveau), Fedora 45,
