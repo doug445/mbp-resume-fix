@@ -20,7 +20,8 @@ After every wake, two things go wrong:
 2. **The fans stop following the temperature.** The SMC resets the fan targets
    on wake. [mbpfan](https://github.com/linux-on-mac/mbpfan) caches the last
    speed it wrote and only writes when that value changes, so it never puts its
-   speed back. On the machine this was written for, the fans sat at 2000 rpm
+   speed back (fixed upstream in mbpfan 2.5.0, see [mbpfan](#mbpfan)). On the
+   machine this was written for, the fans sat at 2000 rpm
    while the package hit 100 °C and the kernel's `intel_powerclamp` started
    injecting forced idle time.
 
@@ -38,6 +39,35 @@ then:
   on purpose (for example while something else is holding the fans at maximum).
 
 Each run logs to the journal under `mbp-resume-fix`.
+
+## mbpfan
+
+Both mbpfan problems on recent kernels are fixed upstream in
+**[mbpfan v2.5.0](https://github.com/linux-on-mac/mbpfan/releases/tag/v2.5.0)**
+(2026-11-17):
+
+- `e4efe8e` *Support the applesmc hwmon sysfs layout*. Linux 7.3 moved the
+  applesmc fan files to `hwmon/hwmonN/` (`fanN_output` → `fanN_target`,
+  `fanN_manual` → `pwmN_enable`). Older mbpfan reports "could not detect any
+  fan" and leaves the Mac to run hot.
+- `4760a26` *Check pwmN_enable and restore fan speeds after resume*, which is
+  the stale fan speed bug described above.
+
+If your distro ships an older mbpfan, or you're running a hand-patched build,
+this installs the pinned upstream release:
+
+```bash
+sudo bash mbpfan/install-mbpfan.sh
+```
+
+It clones tag `v2.5.0`, refuses to build unless the tag resolves to commit
+`ff73ccd`, builds as your user, and installs **only** `/usr/sbin/mbpfan`. The
+old binary is backed up next to it. Your `/etc/mbpfan.conf` and service unit
+are left alone, and are only created if they're missing.
+
+With mbpfan ≥ 2.5.0 the hook's `try-restart` is just a backstop. It stays because
+it also covers older mbpfan versions and an SMC that finishes resetting the fans
+after mbpfan has already re-applied them.
 
 ## Install
 
@@ -92,7 +122,7 @@ kernel lockdown (`/sys/kernel/security/lockdown` must be `[none]`).
 ## Tested on
 
 - MacBookPro11,3 (Late 2013, i7-4850HQ, GT 750M on nouveau), Fedora 45,
-  kernel 7.3, mbpfan patched for the kernel 7.3 applesmc hwmon interface.
+  kernel 7.3, mbpfan 2.5.0 (built with `mbpfan/install-mbpfan.sh`).
 
 Other Haswell/Broadwell MacBook Pros with the same symptoms should behave the
 same way, but haven't been tested.
