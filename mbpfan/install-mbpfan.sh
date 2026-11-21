@@ -7,6 +7,11 @@
 # Installs ONLY the binary. Your /etc/mbpfan.conf and service unit are kept;
 # they're only created if missing. The old binary is backed up next to it.
 #
+# Idempotent: the build is reproducible (-ffile-prefix-map strips the random
+# build path that upstream's -g would embed), so re-running with the same
+# version finds an identical binary and changes nothing: no backup, no
+# reinstall, no service restart.
+#
 # Usage: sudo bash mbpfan/install-mbpfan.sh
 set -euo pipefail
 
@@ -35,17 +40,25 @@ if [ "$got" != "$COMMIT" ]; then
 fi
 
 echo "== building"
-as_user make -s -C "$work/mbpfan" >/dev/null
+# Upstream's Makefile appends to CFLAGS, so this adds to its flags rather than
+# replacing them. The prefix map makes the binary independent of $work.
+as_user env CFLAGS="-ffile-prefix-map=$work/mbpfan=." make -s -C "$work/mbpfan" >/dev/null
 bin="$work/mbpfan/bin/mbpfan"
 [ -x "$bin" ] || { echo "build produced no binary"; exit 1; }
 
-if [ -e /usr/sbin/mbpfan ] && ! cmp -s "$bin" /usr/sbin/mbpfan; then
-    bak=/usr/sbin/mbpfan.bak-$(date +%Y%m%d-%H%M%S)
-    cp -a /usr/sbin/mbpfan "$bak"
-    echo "== old binary backed up to $bak"
+changed=1
+if [ -e /usr/sbin/mbpfan ] && cmp -s "$bin" /usr/sbin/mbpfan; then
+    changed=0
+    echo "== /usr/sbin/mbpfan is already this build; nothing to install"
+else
+    if [ -e /usr/sbin/mbpfan ]; then
+        bak=/usr/sbin/mbpfan.bak-$(date +%Y%m%d-%H%M%S)
+        cp -a /usr/sbin/mbpfan "$bak"
+        echo "== old binary backed up to $bak"
+    fi
+    install -m 0755 -o root -g root "$bin" /usr/sbin/mbpfan
+    restorecon -F /usr/sbin/mbpfan 2>/dev/null || true
 fi
-install -m 0755 -o root -g root "$bin" /usr/sbin/mbpfan
-restorecon -F /usr/sbin/mbpfan 2>/dev/null || true
 
 if [ ! -e /etc/mbpfan.conf ]; then
     install -m 0644 "$work/mbpfan/mbpfan.conf" /etc/mbpfan.conf
@@ -56,14 +69,19 @@ if ! systemctl cat mbpfan.service >/dev/null 2>&1; then
     systemctl daemon-reload
     systemctl enable mbpfan.service
     echo "== installed and enabled mbpfan.service"
+    changed=1
 fi
 
-echo "== restarting mbpfan"
-since=$(date '+%F %T')
-systemctl restart mbpfan.service
-sleep 4
-systemctl is-active mbpfan.service
-journalctl -u mbpfan.service --since "$since" --no-pager -o cat | grep -v '^$' | tail -5 || true
+if [ "$changed" = 1 ]; then
+    echo "== restarting mbpfan"
+    since=$(date '+%F %T')
+    systemctl restart mbpfan.service
+    sleep 4
+    journalctl -u mbpfan.service --since "$since" --no-pager -o cat | grep -v '^$' | tail -5 || true
+fi
+# Report only. If mbpfan is deliberately stopped (e.g. fans forced to max by
+# another tool), an unchanged re-run leaves it stopped.
+echo "mbpfan.service: $(systemctl is-active mbpfan.service || true)"
 
 hw=$(ls -d /sys/devices/platform/applesmc.768/hwmon/hwmon* 2>/dev/null | head -1 || true)
 if [ -n "$hw" ] && [ -e "$hw/fan1_target" ]; then
@@ -72,4 +90,8 @@ if [ -n "$hw" ] && [ -e "$hw/fan1_target" ]; then
         echo "fan$i: $(cat "$hw/fan${i}_input") rpm (target $(cat "$hw/fan${i}_target"), pwm${i}_enable=$(cat "$hw/pwm${i}_enable"))"
     done
 fi
-echo "done: mbpfan $TAG installed to /usr/sbin/mbpfan"
+if [ "$changed" = 1 ]; then
+    echo "done: mbpfan $TAG installed to /usr/sbin/mbpfan"
+else
+    echo "done: mbpfan $TAG already installed, no changes made"
+fi

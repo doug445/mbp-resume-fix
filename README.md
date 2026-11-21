@@ -65,6 +65,11 @@ It clones tag `v2.5.0`, refuses to build unless the tag resolves to commit
 old binary is backed up next to it. Your `/etc/mbpfan.conf` and service unit
 are left alone, and are only created if they're missing.
 
+The build is reproducible: upstream's `-g` would embed the random build
+directory, so the script strips it with `-ffile-prefix-map`. Re-running it with
+the same version therefore finds an identical binary and changes nothing: no
+new backup, no reinstall, no mbpfan restart.
+
 With mbpfan ≥ 2.5.0 the hook's `try-restart` is just a backstop. It stays because
 it also covers older mbpfan versions and an SMC that finishes resetting the fans
 after mbpfan has already re-applied them.
@@ -85,6 +90,13 @@ sudo bash install.sh
 | `/usr/lib/systemd/system-sleep/mbp-resume-fix` | runs it on every resume |
 
 It also runs the fixer once immediately and prints the state before and after.
+
+All the installers are safe to re-run. To check that on your machine (ends
+installed):
+
+```bash
+sudo bash tests/check-idempotent.sh        # add --skip-mbpfan to skip the build
+```
 
 ## Check it
 
