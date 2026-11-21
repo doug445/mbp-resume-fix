@@ -186,6 +186,13 @@ occasional glitch: without the hook, every lid reopen leaves the Mac capped at
 Other Haswell/Broadwell MacBook Pros with the same symptoms should behave the
 same way, but haven't been tested.
 
+## Related projects
+
+Also made for the MacBook Pro 11,3 on Linux (nouveau, Plasma 6):
+
+- [mbp113-kernel73-kit](https://github.com/doug445/mbp113-kernel73-kit): fixes what Linux 7.3 broke, quiet and tinny speakers (CS4208 pin regression) and fan control (applesmc hwmon move).
+- [matrixrain-plasma6](https://github.com/doug445/matrixrain-plasma6): a Matrix rain wallpaper for Plasma 6, with the glow removed and animation that stops while a maximized window covers it.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
